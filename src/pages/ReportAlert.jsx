@@ -3,21 +3,33 @@ import { database } from '../firebase';
 import { ref, push } from 'firebase/database';
 
 async function classifyAlert(description) {
-  const apiKey = "AIzaSyC7RG4whNxdkWWGNvS3bfxDCcuCGa9O4BA";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-  const prompt = `Analyze this hazard report and respond with ONLY a JSON object (no markdown, no explanation): {"hazardType": "flood/fire/accident/crime/weather/other", "severity": "low/medium/critical", "summary": "max 20 words"} Hazard report: ${description}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-  });
-  const data = await response.json();
-  if (!data.candidates || data.candidates.length === 0) {
-    throw new Error('Gemini API returned no candidates: ' + JSON.stringify(data));
+  try {
+    const apiKey = "AIzaSyC7RG4whNxdkWWGNvS3bfxDCcuCGa9O4BA";
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const prompt = `Analyze this hazard and return ONLY JSON: {"hazardType":"flood/fire/accident/traffic/gas leak/power outage/crime/other","severity":"low/medium/critical","summary":"max 20 words"} Hazard: ${description}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+    const data = await response.json();
+    if (!data.candidates || data.candidates.length === 0) throw new Error('No candidates');
+    const text = data.candidates[0].content.parts[0].text;
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    // Fallback to keyword classifier
+    const text = description.toLowerCase();
+    let hazardType = 'other', severity = 'low';
+    if (text.includes('flood') || text.includes('water')) { hazardType = 'flood'; severity = 'critical'; }
+    else if (text.includes('fire') || text.includes('smoke')) { hazardType = 'fire'; severity = 'critical'; }
+    else if (text.includes('accident') || text.includes('crash')) { hazardType = 'accident'; severity = 'medium'; }
+    else if (text.includes('traffic') || text.includes('jam')) { hazardType = 'traffic'; severity = 'medium'; }
+    else if (text.includes('gas') || text.includes('leak')) { hazardType = 'gas leak'; severity = 'critical'; }
+    else if (text.includes('power') || text.includes('outage')) { hazardType = 'power outage'; severity = 'low'; }
+    const summary = description.substring(0, 50);
+    return { hazardType, severity, summary };
   }
-  const text = data.candidates[0].content.parts[0].text;
-  const clean = text.replace(/```json|```/g, '').trim();
-  return JSON.parse(clean);
 }
 
 function ReportAlert() {
