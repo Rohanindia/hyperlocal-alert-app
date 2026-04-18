@@ -1,24 +1,81 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { database } from '../firebase';
+import { ref, onValue } from 'firebase/database';
+
+// Haversine formula to calculate distance in km
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;  
+  const dLon = (lon2 - lon1) * Math.PI / 180; 
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  return R * c; // Distance in km
+}
 
 function AlertFeed() {
-  const mockAlerts = [
-    { id: 1, type: 'Hazard', title: 'Road Blocked', description: 'Main street is blocked due to heavy rain.', time: '10 mins ago', severity: 'high' },
-    { id: 2, type: 'Event', title: 'Community Gathering', description: 'Local festival starting at 5 PM.', time: '2 hours ago', severity: 'low' },
-    { id: 3, type: 'Weather', title: 'Heavy Rain Warning', description: 'Expect severe thunderstorms in the area.', time: '4 hours ago', severity: 'medium' }
-  ];
+  const [alerts, setAlerts] = useState([]);
+  const [location, setLocation] = useState(null);
+  const [locationError, setLocationError] = useState(false);
+
+  useEffect(() => {
+    // Get user browser geolocation
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+        setLocationError(true);
+      }
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!location) return;
+
+    const alertsRef = ref(database, 'alerts');
+    const unsubscribe = onValue(alertsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        setAlerts([]);
+        return;
+      }
+      
+      const parsedAlerts = [];
+      Object.keys(data).forEach(key => {
+        const alertData = data[key];
+        const dist = getDistance(location.lat, location.lng, alertData.lat, alertData.lng);
+        // Filter alerts within 2km
+        if (dist <= 2.0) {
+          parsedAlerts.push({ id: key, ...alertData, distance: dist });
+        }
+      });
+      
+      // Sort by distance ascending
+      parsedAlerts.sort((a, b) => a.distance - b.distance);
+      setAlerts(parsedAlerts);
+    });
+
+    return () => unsubscribe();
+  }, [location]);
 
   return (
     <div className="page-container fade-in">
-      <h2>Local Alerts</h2>
+      <h2>Local Alerts (2km)</h2>
+      {!location && !locationError && <p>Getting your location...</p>}
+      {locationError && <p>Please enable location services.</p>}
       <div className="alerts-list">
-        {mockAlerts.map(alert => (
+        {alerts.length === 0 && location && <p>No alerts nearby within 2km.</p>}
+        {alerts.map(alert => (
           <div key={alert.id} className={`alert-card severity-${alert.severity}`}>
             <div className="alert-header">
-              <span className="alert-type">{alert.type}</span>
-              <span className="alert-time">{alert.time}</span>
+              <span className="alert-type">{alert.hazardType}</span>
+              <span className="alert-time">{new Date(alert.timestamp).toLocaleTimeString()} ({alert.distance.toFixed(2)} km)</span>
             </div>
-            <h3>{alert.title}</h3>
-            <p>{alert.description}</p>
+            <p>{alert.summary}</p>
           </div>
         ))}
       </div>
