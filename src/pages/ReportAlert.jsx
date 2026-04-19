@@ -1,46 +1,34 @@
+/**
+ * ReportAlert Component
+ * Problem: When emergencies happen, people have no fast way to warn neighbors.
+ * Solution: User types a hazard description, Gemini AI classifies it automatically,
+ * and the alert is broadcast in real time to everyone within 2km on a live map.
+ * Uses: Gemini 2.0 Flash API, Firebase Realtime Database, Browser Geolocation API
+ */
 import React, { useState } from 'react';
 import { database } from '../firebase';
 import { ref, push } from 'firebase/database';
-
-async function classifyAlert(description) {
-  try {
-    const apiKey = "AIzaSyC7RG4whNxdkWWGNvS3bfxDCcuCGa9O4BA";
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-    const prompt = `Analyze this hazard and return ONLY JSON: {"hazardType":"flood/fire/accident/traffic/gas leak/power outage/crime/other","severity":"low/medium/critical","summary":"max 20 words"} Hazard: ${description}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    });
-    const data = await response.json();
-    if (!data.candidates || data.candidates.length === 0) throw new Error('No candidates');
-    const text = data.candidates[0].content.parts[0].text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch (e) {
-    // Fallback to keyword classifier
-    const text = description.toLowerCase();
-    let hazardType = 'other', severity = 'low';
-    if (text.includes('flood') || text.includes('water')) { hazardType = 'flood'; severity = 'critical'; }
-    else if (text.includes('fire') || text.includes('smoke')) { hazardType = 'fire'; severity = 'critical'; }
-    else if (text.includes('accident') || text.includes('crash')) { hazardType = 'accident'; severity = 'medium'; }
-    else if (text.includes('traffic') || text.includes('jam')) { hazardType = 'traffic'; severity = 'medium'; }
-    else if (text.includes('gas') || text.includes('leak')) { hazardType = 'gas leak'; severity = 'critical'; }
-    else if (text.includes('power') || text.includes('outage')) { hazardType = 'power outage'; severity = 'low'; }
-    const summary = description.substring(0, 50);
-    return { hazardType, severity, summary };
-  }
-}
+import { analytics } from '../firebase';
+import { logEvent } from 'firebase/analytics';
+import { classifyAlert } from '../utils/geminiService';
 
 function ReportAlert() {
   const [formData, setFormData] = useState({ description: '' });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.description) return;
+
+    const description = formData.description;
+    if (!description || description.trim().length < 10) {
+      setError('Please enter at least 10 characters');
+      return;
+    }
+
+    setError('');
     setLoading(true);
 
     try {
@@ -74,11 +62,17 @@ function ReportAlert() {
         timestamp: Date.now()
       });
 
+      // Log analytics event
+      logEvent(analytics, 'alert_reported', {
+        hazardType: aiData.hazardType,
+        severity: aiData.severity
+      });
+
       alert('Alert reported successfully!');
       setFormData({ description: '' });
     } catch (error) {
       console.error("Error creating alert:", error);
-      alert('Error reporting alert. Please check console for details.');
+      setError('Error reporting alert. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -98,10 +92,12 @@ function ReportAlert() {
               rows="4"
               placeholder="Describe the hazard (e.g. Broken water pipe on Main St, flooding the road...)"
               required
+              aria-label="Hazard description input"
             ></textarea>
           </div>
-          <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? 'Processing via AI & Location...' : 'Submit Alert'}
+          {error && <div className="error-message" role="alert">{error}</div>}
+          <button type="submit" className="submit-btn" disabled={loading} aria-label="Submit alert">
+            {loading ? 'Submitting...' : 'Submit Alert'}
           </button>
         </form>
       </div>

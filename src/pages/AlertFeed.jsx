@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { database } from '../firebase';
+import React, { useEffect, useState, useMemo } from 'react';
+import { database, analytics } from '../firebase';
 import { ref, onValue } from 'firebase/database';
+import { logEvent } from 'firebase/analytics';
 
 // Haversine formula to calculate distance in km
 function getDistance(lat1, lon1, lat2, lon2) {
@@ -15,8 +16,8 @@ function getDistance(lat1, lon1, lat2, lon2) {
   return R * c; // Distance in km
 }
 
-function AlertFeed() {
-  const [alerts, setAlerts] = useState([]);
+const AlertFeed = React.memo(function AlertFeed() {
+  const [rawAlerts, setRawAlerts] = useState([]);
   const [location, setLocation] = useState(null);
   const [locationError, setLocationError] = useState(false);
 
@@ -40,7 +41,7 @@ function AlertFeed() {
     const unsubscribe = onValue(alertsRef, (snapshot) => {
       const data = snapshot.val();
       if (!data) {
-        setAlerts([]);
+        setRawAlerts([]);
         return;
       }
       
@@ -54,20 +55,31 @@ function AlertFeed() {
         }
       });
       
-      // Sort by distance ascending
-      parsedAlerts.sort((a, b) => a.distance - b.distance);
-      setAlerts(parsedAlerts);
+      setRawAlerts(parsedAlerts);
     });
 
     return () => unsubscribe();
   }, [location]);
 
+  // Memoize sorted alerts for efficiency
+  const alerts = useMemo(() => {
+    const sorted = [...rawAlerts].sort((a, b) => a.distance - b.distance);
+    return sorted;
+  }, [rawAlerts]);
+
+  // Log feed_viewed analytics event
+  useEffect(() => {
+    if (alerts.length > 0) {
+      logEvent(analytics, 'feed_viewed', { alertCount: alerts.length });
+    }
+  }, [alerts.length]);
+
   return (
     <div className="page-container fade-in">
       <h2>Local Alerts (2km)</h2>
-      {!location && !locationError && <p>Getting your location...</p>}
+      {!location && !locationError && <p>Detecting your location...</p>}
       {locationError && <p>Please enable location services.</p>}
-      <div className="alerts-list">
+      <div className="alerts-list" role="feed" aria-label="Nearby alerts" aria-live="polite">
         {alerts.length === 0 && location && <p>No alerts nearby within 2km.</p>}
         {alerts.map(alert => (
           <div key={alert.id} className={`alert-card severity-${alert.severity}`}>
@@ -81,6 +93,6 @@ function AlertFeed() {
       </div>
     </div>
   );
-}
+});
 
 export default AlertFeed;

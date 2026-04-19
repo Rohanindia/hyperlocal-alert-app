@@ -15,7 +15,7 @@ function MapUpdater({ center }) {
   return null;
 }
 
-function MapView() {
+const MapView = React.memo(function MapView() {
   const [center, setCenter] = useState([51.505, -0.09]); // Default fallback
   const [alerts, setAlerts] = useState([]);
   const [locationFound, setLocationFound] = useState(false);
@@ -63,7 +63,8 @@ function MapView() {
   return (
     <div className="page-container full-height fade-in">
       <h2 className="map-title">Incident Map</h2>
-      <div className="map-wrapper">
+      {!locationFound && <p>Detecting your location...</p>}
+      <div className="map-wrapper" role="application" aria-label="Alert map">
         <MapContainer center={center} zoom={13} scrollWheelZoom={true} className="leaflet-map">
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -106,6 +107,6 @@ function MapView() {
       </div>
     </div>
   );
-}
+});
 
 export default MapView;
