@@ -16,6 +16,7 @@ function ReportAlert() {
   const [formData, setFormData] = useState({ description: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -68,7 +69,8 @@ function ReportAlert() {
         severity: aiData.severity
       });
 
-      alert('Alert reported successfully!');
+      setSuccessMsg('✅ Alert reported successfully!');
+      setTimeout(() => setSuccessMsg(''), 3000);
       setFormData({ description: '' });
     } catch (error) {
       console.error("Error creating alert:", error);
@@ -80,6 +82,25 @@ function ReportAlert() {
 
   return (
     <div className="page-container slide-up">
+      {successMsg && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'linear-gradient(135deg, #00b09b, #96c93d)',
+          color: 'white',
+          padding: '14px 28px',
+          borderRadius: '12px',
+          fontWeight: 'bold',
+          fontSize: '16px',
+          zIndex: 9999,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          animation: 'toastFadeIn 0.3s ease'
+        }}>
+          {successMsg}
+        </div>
+      )}
       <h2>Report an Issue</h2>
       <div className="form-card">
         <form onSubmit={handleSubmit} className="report-form">
