@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { database } from '../firebase';
+import { database, analytics } from '../firebase';
 import { ref, onValue } from 'firebase/database';
+import { logEvent } from 'firebase/analytics';
 
 // Component to dynamically update map center
 function MapUpdater({ center }) {
@@ -19,6 +20,14 @@ const MapView = React.memo(function MapView() {
   const [center, setCenter] = useState([51.505, -0.09]); // Default fallback
   const [alerts, setAlerts] = useState([]);
   const [locationFound, setLocationFound] = useState(false);
+
+  // Log analytics when map page loads
+  useEffect(() => {
+    logEvent(analytics, 'map_viewed', {
+      timestamp: Date.now(),
+      page: 'map_view'
+    });
+  }, []);
 
   useEffect(() => {
     // Get user browser geolocation

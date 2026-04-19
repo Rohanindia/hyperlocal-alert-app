@@ -34,6 +34,14 @@ const AlertFeed = React.memo(function AlertFeed() {
     );
   }, []);
 
+  // Log analytics when feed page loads
+  useEffect(() => {
+    logEvent(analytics, 'feed_viewed', { 
+      timestamp: Date.now(),
+      page: 'alert_feed'
+    });
+  }, []);
+
   useEffect(() => {
     if (!location) return;
 

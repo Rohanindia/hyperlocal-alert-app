@@ -6,9 +6,8 @@
  * Uses: Gemini 2.0 Flash API, Firebase Realtime Database, Browser Geolocation API
  */
 import React, { useState } from 'react';
-import { database } from '../firebase';
+import { database, analytics, auth } from '../firebase';
 import { ref, push } from 'firebase/database';
-import { analytics } from '../firebase';
 import { logEvent } from 'firebase/analytics';
 import { classifyAlert } from '../utils/geminiService';
 
@@ -17,17 +16,25 @@ function ReportAlert() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [lastSubmit, setLastSubmit] = useState(0);
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (Date.now() - lastSubmit < 30000) {
+      setError('Please wait 30 seconds between submissions');
+      return;
+    }
+
     const description = formData.description;
     if (!description || description.trim().length < 10) {
       setError('Please enter at least 10 characters');
       return;
     }
+
+    const cleanDescription = description.replace(/<[^>]*>/g, '').trim();
 
     setError('');
     setLoading(true);
@@ -50,7 +57,7 @@ function ReportAlert() {
         console.warn("Geolocation failed, using default Bangalore coordinates.", geoError);
       }
 
-      const aiData = await classifyAlert(formData.description);
+      const aiData = await classifyAlert(cleanDescription);
 
       // Save to Firebase Realtime Database
       const alertsRef = ref(database, 'alerts');
@@ -60,7 +67,8 @@ function ReportAlert() {
         hazardType: aiData.hazardType,
         severity: aiData.severity.toLowerCase(),
         summary: aiData.summary,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        userId: auth.currentUser?.uid || 'anonymous'
       });
 
       // Log analytics event
@@ -69,9 +77,16 @@ function ReportAlert() {
         severity: aiData.severity
       });
 
+      logEvent(analytics, 'alert_submitted', {
+        hazardType: aiData.hazardType,
+        severity: aiData.severity,
+        timestamp: Date.now()
+      });
+
       setSuccessMsg('✅ Alert reported successfully!');
       setTimeout(() => setSuccessMsg(''), 3000);
       setFormData({ description: '' });
+      setLastSubmit(Date.now());
     } catch (error) {
       console.error("Error creating alert:", error);
       setError('Error reporting alert. Please try again.');
@@ -113,6 +128,7 @@ function ReportAlert() {
               rows="4"
               placeholder="Describe the hazard (e.g. Broken water pipe on Main St, flooding the road...)"
               required
+              maxLength={500}
               aria-label="Hazard description input"
             ></textarea>
           </div>

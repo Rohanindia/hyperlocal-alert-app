@@ -42,4 +42,24 @@ describe('classifyAlert', () => {
     const result = classifyAlert('this is a very long description that goes on and on');
     expect(result.summary.length).toBeLessThanOrEqual(50);
   });
+
+  it('classifies fire correctly', () => {
+    const result = classifyAlert('fire breaking out near market');
+    expect(result.hazardType).toBe('fire');
+    expect(result.severity).toBe('critical');
+  });
+  it('classifies accident correctly', () => {
+    const result = classifyAlert('car crash on highway');
+    expect(result.hazardType).toBe('accident');
+    expect(result.severity).toBe('medium');
+  });
+  it('rejects empty description', () => {
+    const result = classifyAlert('');
+    expect(result.hazardType).toBe('other');
+  });
+  it('handles long description', () => {
+    const long = 'flood '.repeat(100);
+    const result = classifyAlert(long);
+    expect(result.summary.length).toBeLessThanOrEqual(50);
+  });
 });
